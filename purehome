@@ -1,0 +1,190 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+__description__ = 'Ashame you in front of your friends if your home is not tidy'
+
+# ---------------------------------------------------------------------------
+# Standard imports:
+import sys
+import argparse
+import os
+import subprocess
+import datetime
+
+try:
+    import xdg.BaseDirectory as xdgbasedir
+except ImportError:
+    xdgbasedir = None
+
+
+# ---------------------------------------------------------------------------
+
+DEFAULT_EXPECTED_CONTENTS = [
+    'backup',
+    'comms',
+    'devel',
+    'doc',
+    'media',
+    'other'
+    ]
+
+HOME_IS_WRONG_BANNER = r"""
+ _  _                 _     __      _____  ___  _  _  ___
+| || |___ _ __  ___  (_)___ \ \    / / _ \/ _ \| \| |/ __|
+| __ / _ \ '  \/ -_) | (_-<  \ \/\/ /|   / (_) | .` | (_ |
+|_||_\___/_|_|_\___| |_/__/   \_/\_/ |_|_\\___/|_|\_|\___|
+"""
+
+class ConfigFiles(object):
+
+    @classmethod
+    def contents(cls):
+        if xdgbasedir:
+            directory = xdgbasedir.save_config_path('purehome')
+            config_path = os.path.join(directory, 'expected')
+        else:
+            config_path = os.path.expanduser('~/.purehome')
+        return os.path.exists(config_path), config_path
+
+    @classmethod
+    def cleansince(cls):
+        if xdgbasedir:
+            directory = xdgbasedir.save_data_path('purehome')
+            cleansince_path = os.path.join(directory, 'cleansince')
+        else:
+            cleansince_path = os.path.expanduser('~/.purehome.cleansince')
+        return os.path.exists(cleansince_path), cleansince_path
+
+    @classmethod
+    def help(cls):
+        print "Default home contents: {}".format(", ".join(DEFAULT_EXPECTED_CONTENTS))
+        exists, contents = cls.contents()
+        print "Expected contents file: {}".format(contents)
+        if exists:
+            print "Expected contents: {}".format(", ".join(open(contents, 'r').read().splitlines()))
+        exists, cleansince = cls.cleansince()
+        print "Clean since file: {}".format(cleansince)
+        if exists:
+            print "Clean since: {}".format(open(cleansince, 'r').read().strip())
+
+class CleanSince(object):
+
+    @staticmethod
+    def mark_clean():
+        exists, cleansince_path = ConfigFiles.cleansince()
+        if exists:
+            return
+        today = datetime.date.today()
+        with open(cleansince_path, 'w') as fout:
+            fout.write(today.isoformat())
+            fout.write('\n')
+
+    @staticmethod
+    def mark_dirty():
+        exists, cleansince_path = ConfigFiles.cleansince()
+        if exists:
+            os.remove(cleansince_path)
+
+    @staticmethod
+    def clean_since():
+        exists, cleansince_path = ConfigFiles.cleansince()
+        if not exists:
+            return False
+        with open(cleansince_path, 'r') as fin:
+            date = fin.read().strip()
+        cleansince = datetime.datetime.strptime(date, '%Y-%m-%d').date()
+        today = datetime.date.today()
+        clean_days = (today - cleansince).days
+        print '{} days with a clean home directory'.format(clean_days)
+        return True
+
+def get_home_contents():
+    for f in os.listdir(os.environ['HOME']):
+        if not f.startswith('.'):
+            yield f
+
+def expected_contents():
+    exists, contents_file = ConfigFiles.contents()
+    if exists:
+        with open(contents_file) as fin:
+            return [ line.strip() for line in fin ]
+    else:
+        return DEFAULT_EXPECTED_CONTENTS
+
+def bulletize(iterable, bullet='*'):
+    return "\n".join((' {0} {1}'.format(bullet, item) for item in iterable))
+
+def print_report(report):
+    try:
+        cowsay = subprocess.Popen(['cowsay', '-n'],
+            stdout=subprocess.PIPE,
+            stdin=subprocess.PIPE,
+            stderr=subprocess.STDOUT
+            )
+    except OSError as oserr:
+        if oserr.errno == 2:
+            stdout = report
+        else:
+            raise
+    else:
+        stdout = cowsay.communicate(input=report)[0]
+    print stdout.decode()
+
+def report_contents(expected, actual):
+    rubbish = actual - expected
+    missing = expected - actual
+    out = [HOME_IS_WRONG_BANNER]
+    if rubbish:
+        out.append("Superfluous contents:")
+        out.append(bulletize(rubbish))
+    if missing:
+        out.append("Missing contents:")
+        out.append(bulletize(missing))
+    print_report("\n".join(out))
+
+def compare_contents(with_report=True):
+    actual = set(get_home_contents())
+    expected = set(expected_contents())
+    if actual == expected:
+        CleanSince.mark_clean()
+        return True
+
+    CleanSince.mark_dirty()
+    if with_report:
+        report_contents(expected, actual)
+    return False
+
+
+
+def parse_args(argv):
+    """ Parse and validate command line arguments """
+    parser = argparse.ArgumentParser(description=__description__)
+    excl = parser.add_mutually_exclusive_group()
+    excl.add_argument('--uptime', action='store_true')
+    excl.add_argument('--debug', action='store_true')
+    excl.add_argument('--quiet-when-clean', action='store_true')
+
+    args = parser.parse_args(argv[1:])
+
+    return args
+
+
+def main(argv=[__name__]):
+    """ Run this program """
+    args = parse_args(argv)
+    try:
+        if args.debug:
+            ConfigFiles.help()
+            return 0
+
+        with_failure_report = not args.uptime
+        is_clean = compare_contents(with_failure_report)
+        if not args.quiet_when_clean:
+            CleanSince.clean_since()
+        return 0 if is_clean else 1
+
+    except KeyboardInterrupt:
+        sys.exit(-1)
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv) or 0)
