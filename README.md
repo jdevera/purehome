@@ -14,8 +14,8 @@ even by many programs, to dump all sorts of random rubbish.
 
 I say **no** to this, and to help keep my home tidy, I use `purehome`.
 
-But `purehome` does not clean my home for me, not it does not. Purehome work by
-making me ashamed of having a dirty home, by giving a constant reminder that
+But `purehome` does not clean my home for me, no, it does not. Purehome works by
+making me ashamed of having a dirty home, by giving me a constant reminder that
 I've let myself slip. Purehome gets called in my shell init script, so when I
 open a new shell, this is the greeting I get:
 
