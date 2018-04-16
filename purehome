@@ -127,7 +127,7 @@ def print_report(report):
         else:
             raise
     else:
-        stdout = cowsay.communicate(input=report)[0]
+        stdout = cowsay.communicate(input=report.encode())[0].decode()
     print(stdout)
 
 def report_contents(expected, actual):
